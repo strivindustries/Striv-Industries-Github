@@ -1,0 +1,11 @@
+import type { Database } from '@/integrations/supabase/types';
+type Row<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
+export type Customer = Row<'customers'>;
+export type Service = Row<'services'>;
+export type Appointment = Row<'appointments'>;
+export type BusinessHours = Row<'business_hours'>;
+export type BlockedDate = Row<'blocked_dates'>;
+export type Notification = Row<'notifications'>;
+export type BookingSettings = Row<'booking_settings'>;
+export type AppointmentSummary = { id: string; service: string; date: string; start_time: string; end_time: string; status: string; business_name: string };
+export const appointmentLabels: Record<string, string> = { pending: 'Pendiente de confirmación', confirmed: 'Confirmada', cancelled: 'Cancelada', completed: 'Completada', no_show: 'No asistió' };

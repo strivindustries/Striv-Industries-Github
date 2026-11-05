@@ -340,6 +340,20 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_booking: {
+        Args: {
+          p_date: string
+          p_email: string
+          p_hash: string
+          p_name: string
+          p_notes: string
+          p_phone: string
+          p_service: string
+          p_time: string
+          p_token: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

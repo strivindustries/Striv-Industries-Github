@@ -8,6 +8,13 @@
       "when": 1793880532243,
       "tag": "0000_single_business_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793881102313,
+      "tag": "0001_atomic_booking_receipt",
+      "breakpoints": true
     }
   ]
 }
