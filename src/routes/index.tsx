@@ -26,7 +26,7 @@ function Index() {
 
         <div className="reveal relative mx-auto mt-10 w-full max-w-md [animation-delay:120ms]">
           <div className="float-slow glass scan overflow-hidden rounded-3xl p-2">
-            <img src={logo.url} alt="" className="h-48 w-full rounded-2xl object-cover" />
+            <img src={logo} alt="" className="h-48 w-full rounded-2xl object-cover" />
           </div>
         </div>
 
