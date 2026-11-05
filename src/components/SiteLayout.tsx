@@ -16,7 +16,7 @@ export function SiteLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-3 z-20 mx-auto mt-3 w-[calc(100%-1.5rem)] max-w-6xl">
         <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-full px-4 py-2">
           <Link to="/" className="flex items-center gap-3">
-            <img src={logo.url} alt="STRIV INDUSTRIES" className="pulse-glow h-10 w-10 rounded-full object-cover" />
+            <img src={logo} alt="STRIV INDUSTRIES" className="pulse-glow h-10 w-10 rounded-full object-cover" />
             <span className="hidden font-display text-sm font-bold tracking-[0.3em] sm:inline">STRIV</span>
           </Link>
           <nav className="flex flex-wrap gap-1 text-sm text-muted-foreground">
