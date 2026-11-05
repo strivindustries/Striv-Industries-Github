@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import logo from "@/assets/striv-logo.jpg.asset.json";
+import logo from "@/assets/striv-logo.jpg";
 import { meta } from "@/lib/site";
 
 export const Route = createFileRoute("/")({

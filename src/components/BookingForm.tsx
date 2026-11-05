@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { bookAppointment } from "@/lib/booking.functions";
-import { field, services, WHATSAPP, HOURS } from "@/lib/site";
+import { field, WHATSAPP } from "@/lib/site";
 
 export function BookingForm() {
   const book = useServerFn(bookAppointment);

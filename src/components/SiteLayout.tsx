@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import logo from "@/assets/striv-logo.jpg.asset.json";
+import logo from "@/assets/striv-logo.jpg";
 
 const links = [
   ["Inicio", "/"],
