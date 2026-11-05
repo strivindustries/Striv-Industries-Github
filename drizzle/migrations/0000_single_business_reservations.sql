@@ -1,0 +1,74 @@
+CREATE TABLE public.customers (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL CHECK(length(name) BETWEEN 1 AND 100), email text NOT NULL UNIQUE CHECK(length(email)<=255), phone text NOT NULL CHECK(length(phone) BETWEEN 7 AND 30), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+GRANT ALL ON public.customers TO service_role;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.services (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL CHECK(length(name)<=100), description text NOT NULL DEFAULT '', duration_minutes integer NOT NULL CHECK(duration_minutes BETWEEN 5 AND 480), price numeric(12,2) CHECK(price>=0), active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT ON public.services TO anon, authenticated; GRANT ALL ON public.services TO service_role;
+ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Active services are public" ON public.services FOR SELECT TO anon, authenticated USING(active);
+CREATE TABLE public.business_hours (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), day_of_week integer NOT NULL UNIQUE CHECK(day_of_week BETWEEN 0 AND 6), open_time time NOT NULL, close_time time NOT NULL, break_start time, break_end time, active boolean NOT NULL DEFAULT true, CHECK(open_time<close_time), CHECK((break_start IS NULL AND break_end IS NULL) OR (break_start>=open_time AND break_end<=close_time AND break_start<break_end)));
+GRANT SELECT ON public.business_hours TO anon, authenticated; GRANT ALL ON public.business_hours TO service_role;
+ALTER TABLE public.business_hours ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Hours are public" ON public.business_hours FOR SELECT TO anon, authenticated USING(true);
+CREATE TABLE public.blocked_dates (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), date date NOT NULL UNIQUE, reason text NOT NULL DEFAULT '');
+GRANT ALL ON public.blocked_dates TO service_role;
+ALTER TABLE public.blocked_dates ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.booking_settings (id boolean PRIMARY KEY DEFAULT true CHECK(id), minimum_notice_minutes integer NOT NULL DEFAULT 0 CHECK(minimum_notice_minutes>=0), slot_interval_minutes integer NOT NULL DEFAULT 60 CHECK(slot_interval_minutes BETWEEN 5 AND 240), buffer_minutes integer NOT NULL DEFAULT 0 CHECK(buffer_minutes BETWEEN 0 AND 240));
+GRANT SELECT ON public.booking_settings TO anon, authenticated; GRANT ALL ON public.booking_settings TO service_role;
+ALTER TABLE public.booking_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Scheduling settings are public" ON public.booking_settings FOR SELECT TO anon, authenticated USING(true);
+CREATE TABLE public.appointments (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), customer_id uuid NOT NULL REFERENCES public.customers(id), service_id uuid NOT NULL REFERENCES public.services(id), date date NOT NULL, start_time time NOT NULL, end_time time NOT NULL, reserved_until time NOT NULL, status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','cancelled','completed','no_show')), notes text NOT NULL DEFAULT '' CHECK(length(notes)<=2000), token_hash text NOT NULL CHECK(length(token_hash)=64), google_event_id text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), CHECK(start_time<end_time AND end_time<=reserved_until), EXCLUDE USING gist (tsrange(date+start_time,date+reserved_until,'[)') WITH &&) WHERE(status<>'cancelled'));
+GRANT ALL ON public.appointments TO service_role;
+ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+CREATE INDEX appointments_customer_idx ON public.appointments(customer_id);
+CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), appointment_id uuid REFERENCES public.appointments(id), kind text NOT NULL, recipient text NOT NULL, payload jsonb NOT NULL DEFAULT '{}', status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')), attempts integer NOT NULL DEFAULT 0, last_error text, created_at timestamptz NOT NULL DEFAULT now(), sent_at timestamptz);
+GRANT ALL ON public.notifications TO service_role;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.support_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, email text NOT NULL, phone text NOT NULL DEFAULT '', message text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+GRANT ALL ON public.support_requests TO service_role;
+ALTER TABLE public.support_requests ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.booking_rate_limits (key text PRIMARY KEY, window_start timestamptz NOT NULL DEFAULT now(), attempts integer NOT NULL DEFAULT 0);
+GRANT ALL ON public.booking_rate_limits TO service_role;
+ALTER TABLE public.booking_rate_limits ENABLE ROW LEVEL SECURITY;
+CREATE FUNCTION public.booking_rate_limit(p_key text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ DECLARE n integer; BEGIN INSERT INTO booking_rate_limits(key,attempts) VALUES(p_key,1) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN booking_rate_limits.window_start<now()-interval '1 hour' THEN 1 ELSE booking_rate_limits.attempts+1 END, window_start=CASE WHEN booking_rate_limits.window_start<now()-interval '1 hour' THEN now() ELSE booking_rate_limits.window_start END RETURNING attempts INTO n; RETURN n<=20; END $$;
+REVOKE ALL ON FUNCTION public.booking_rate_limit(text) FROM PUBLIC, anon, authenticated; GRANT EXECUTE ON FUNCTION public.booking_rate_limit(text) TO service_role;
+CREATE FUNCTION public.get_blocked_dates() RETURNS TABLE(date date) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$ SELECT date FROM blocked_dates WHERE date >= (now() AT TIME ZONE 'America/Bogota')::date $$;
+REVOKE ALL ON FUNCTION public.get_blocked_dates() FROM PUBLIC; GRANT EXECUTE ON FUNCTION public.get_blocked_dates() TO anon,authenticated,service_role;
+CREATE FUNCTION public.get_availability(p_service uuid,p_date date,p_ignore uuid DEFAULT NULL) RETURNS TABLE(start_time text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+WITH cfg AS (SELECT * FROM booking_settings WHERE id=true), svc AS (SELECT duration_minutes FROM services WHERE id=p_service AND active), hrs AS (SELECT * FROM business_hours WHERE active AND day_of_week=extract(dow FROM p_date)), slots AS (SELECT t, t+make_interval(mins=>svc.duration_minutes) AS e, t+make_interval(mins=>svc.duration_minutes+cfg.buffer_minutes) AS r FROM cfg,svc,hrs,LATERAL generate_series(p_date+hrs.open_time,p_date+hrs.close_time,make_interval(mins=>cfg.slot_interval_minutes)) t WHERE t+make_interval(mins=>svc.duration_minutes+cfg.buffer_minutes)<=p_date+hrs.close_time AND (hrs.break_start IS NULL OR NOT tsrange(t,t+make_interval(mins=>svc.duration_minutes+cfg.buffer_minutes),'[)') && tsrange(p_date+hrs.break_start,p_date+hrs.break_end,'[)')) AND t AT TIME ZONE 'America/Bogota'>=now()+make_interval(mins=>cfg.minimum_notice_minutes))
+SELECT to_char(t,'HH24:MI') FROM slots WHERE p_date<=(now() AT TIME ZONE 'America/Bogota')::date+365 AND NOT EXISTS(SELECT 1 FROM blocked_dates WHERE date=p_date) AND NOT EXISTS(SELECT 1 FROM appointments a WHERE a.status<>'cancelled' AND (p_ignore IS NULL OR a.id<>p_ignore) AND tsrange(a.date+a.start_time,a.date+a.reserved_until,'[)') && tsrange(t,r,'[)')) ORDER BY t $$;
+REVOKE ALL ON FUNCTION public.get_availability(uuid,date,uuid) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.get_availability(uuid,date,uuid) TO service_role;
+CREATE FUNCTION public.validate_appointment() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$ DECLARE duration integer; gap integer; BEGIN
+IF TG_OP='UPDATE' THEN NEW.updated_at=now(); END IF;
+IF NEW.status='cancelled' THEN RETURN NEW; END IF;
+IF TG_OP='UPDATE' AND NEW.date=OLD.date AND NEW.start_time=OLD.start_time AND NEW.service_id=OLD.service_id THEN RETURN NEW; END IF;
+PERFORM pg_advisory_xact_lock(hashtext('striv-reservations'));
+IF NOT EXISTS(SELECT 1 FROM get_availability(NEW.service_id,NEW.date,NEW.id) s WHERE s.start_time=to_char(NEW.start_time,'HH24:MI')) THEN RAISE EXCEPTION 'Este horario acaba de ser ocupado. Por favor selecciona otro.' USING ERRCODE='23P01'; END IF;
+SELECT duration_minutes INTO duration FROM services WHERE id=NEW.service_id AND active;
+SELECT buffer_minutes INTO gap FROM booking_settings WHERE id=true;
+NEW.end_time=NEW.start_time+make_interval(mins=>duration); NEW.reserved_until=NEW.end_time+make_interval(mins=>gap); RETURN NEW; END $$;
+CREATE TRIGGER appointments_validate BEFORE INSERT OR UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION public.validate_appointment();
+CREATE FUNCTION public.queue_appointment_notifications() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ DECLARE dest text; event text; BEGIN
+SELECT email INTO dest FROM customers WHERE id=NEW.customer_id;
+IF TG_OP='INSERT' THEN event='requested'; ELSIF NEW.status='cancelled' AND OLD.status<>NEW.status THEN event='cancelled'; ELSIF NEW.date<>OLD.date OR NEW.start_time<>OLD.start_time THEN event='rescheduled'; ELSIF NEW.status='confirmed' AND OLD.status<>NEW.status THEN event='confirmed'; ELSE RETURN NEW; END IF;
+INSERT INTO notifications(appointment_id,kind,recipient,payload) VALUES(NEW.id,event,dest,jsonb_build_object('date',NEW.date,'start_time',NEW.start_time,'service_id',NEW.service_id));
+IF event='requested' THEN INSERT INTO notifications(appointment_id,kind,recipient) VALUES(NEW.id,'owner_requested','strivindustries@gmail.com'); END IF;
+RETURN NEW; END $$;
+CREATE TRIGGER appointments_notifications AFTER INSERT OR UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION public.queue_appointment_notifications();
+CREATE FUNCTION public.create_appointment(p_name text,p_email text,p_phone text,p_service uuid,p_date date,p_time time,p_notes text,p_hash text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ DECLARE cid uuid; aid uuid; BEGIN
+IF length(p_name) NOT BETWEEN 1 AND 100 OR p_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' OR length(p_phone) NOT BETWEEN 7 AND 30 OR length(p_notes)>2000 OR length(p_hash)<>64 THEN RAISE EXCEPTION 'Datos inválidos'; END IF;
+INSERT INTO customers(name,email,phone) VALUES(p_name,lower(trim(p_email)),p_phone) ON CONFLICT(email) DO UPDATE SET updated_at=now() RETURNING id INTO cid;
+INSERT INTO appointments(customer_id,service_id,date,start_time,end_time,reserved_until,notes,token_hash) VALUES(cid,p_service,p_date,p_time,p_time+interval '1 minute',p_time+interval '1 minute',p_notes,p_hash) RETURNING id INTO aid; RETURN aid; END $$;
+REVOKE ALL ON FUNCTION public.create_appointment(text,text,text,uuid,date,time,text,text) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.create_appointment(text,text,text,uuid,date,time,text,text) TO service_role;
+CREATE FUNCTION public.manage_appointment(p_id uuid,p_email text,p_hash text,p_action text DEFAULT 'get',p_date date DEFAULT NULL,p_time time DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ DECLARE a appointments; title text; BEGIN
+SELECT ap.* INTO a FROM appointments ap JOIN customers c ON c.id=ap.customer_id WHERE ap.id=p_id AND c.email=lower(trim(p_email)) AND ap.token_hash=p_hash FOR UPDATE OF ap;
+IF NOT FOUND THEN RAISE EXCEPTION 'El enlace de reserva no es válido.'; END IF;
+IF p_action<>'get' AND a.status NOT IN ('pending','confirmed','cancelled') THEN RAISE EXCEPTION 'Esta cita ya no se puede modificar.'; END IF;
+IF p_action='cancel' AND a.status<>'cancelled' THEN UPDATE appointments SET status='cancelled' WHERE id=a.id RETURNING * INTO a;
+ELSIF p_action='reschedule' THEN IF a.status='cancelled' OR p_date IS NULL OR p_time IS NULL THEN RAISE EXCEPTION 'No se puede reprogramar esta cita.'; END IF; UPDATE appointments SET date=p_date,start_time=p_time,status='pending' WHERE id=a.id RETURNING * INTO a;
+ELSIF p_action NOT IN ('get','cancel') THEN RAISE EXCEPTION 'Acción inválida'; END IF;
+SELECT name INTO title FROM services WHERE id=a.service_id;
+RETURN jsonb_build_object('id',a.id,'service',title,'date',a.date,'start_time',to_char(a.start_time,'HH24:MI'),'end_time',to_char(a.end_time,'HH24:MI'),'status',a.status,'business_name','STRIV INDUSTRIES'); END $$;
+REVOKE ALL ON FUNCTION public.manage_appointment(uuid,text,text,text,date,time) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.manage_appointment(uuid,text,text,text,date,time) TO service_role;
+CREATE FUNCTION public.touch_updated_at() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$ BEGIN NEW.updated_at=now(); RETURN NEW; END $$;
+CREATE TRIGGER customers_updated BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+CREATE TRIGGER services_updated BEFORE UPDATE ON public.services FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
