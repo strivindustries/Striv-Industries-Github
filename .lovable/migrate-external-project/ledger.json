@@ -1,0 +1,7 @@
+[
+{"capability":"code","source":"archive","outcome":"migrate","status":"migrated","next_action":"verify preview"},
+{"capability":"schema/records/auth","source":"none detected","outcome":"not applicable","status":"verified","next_action":"none"},
+{"capability":"google_calendar booking","source":"connector","outcome":"preserve","status":"pending","next_action":"connect Google Calendar"},
+{"capability":"google_mail notifications","source":"connector","outcome":"preserve","status":"pending","next_action":"connect Gmail"},
+{"capability":"logo asset","source":"asset pointer","outcome":"preserve","status":"pending","next_action":"verify loads"}
+]
