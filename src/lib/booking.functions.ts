@@ -23,6 +23,15 @@ function createAuthenticatedSupabaseClient() {
 };
 
 const env = request.runtime?.cloudflare?.env;
+
+console.log("☁️ ENV CHECK:", {
+  hasEnv: Boolean(env),
+  keys: env ? Object.keys(env) : [],
+  hasUrl: Boolean(env?.["SUPABASE_URL"]),
+  hasViteUrl: Boolean(env?.["VITE_SUPABASE_URL"]),
+  hasKey: Boolean(env?.["SUPABASE_PUBLISHABLE_KEY"]),
+  hasViteKey: Boolean(env?.["VITE_SUPABASE_PUBLISHABLE_KEY"]),
+});
 const authorization = request.headers.get("authorization");
 
 const url =
@@ -30,7 +39,7 @@ const url =
   env?.["VITE_SUPABASE_URL"] ??
   process.env["SUPABASE_URL"] ??
   process.env["VITE_SUPABASE_URL"];
-  
+
 const key =
   env?.["SUPABASE_PUBLISHABLE_KEY"] ??
   env?.["VITE_SUPABASE_PUBLISHABLE_KEY"] ??
