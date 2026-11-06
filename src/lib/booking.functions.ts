@@ -22,17 +22,20 @@ function createAuthenticatedSupabaseClient() {
   };
 };
 
-const env = request.runtime?.cloudflare?.env;
+const cloudflare = request.runtime?.cloudflare;
 
-console.log("☁️ ENV CHECK:", {
-  hasEnv: Boolean(env),
-  keys: env ? Object.keys(env) : [],
-  hasUrl: Boolean(env?.["SUPABASE_URL"]),
-  hasViteUrl: Boolean(env?.["VITE_SUPABASE_URL"]),
-  hasKey: Boolean(env?.["SUPABASE_PUBLISHABLE_KEY"]),
-  hasViteKey: Boolean(env?.["VITE_SUPABASE_PUBLISHABLE_KEY"]),
+console.log("☁️ CLOUDFLARE RUNTIME CHECK:", {
+  hasRuntime: Boolean(request.runtime),
+  runtimeKeys: request.runtime ? Object.keys(request.runtime) : [],
+  hasCloudflare: Boolean(cloudflare),
+  cloudflareKeys: cloudflare ? Object.keys(cloudflare) : [],
+  hasEnv: Boolean(cloudflare?.env),
+  envKeys: cloudflare?.env ? Object.keys(cloudflare.env) : [],
 });
+
 const authorization = request.headers.get("authorization");
+
+const env = cloudflare?.env;
 
 const url =
   env?.["SUPABASE_URL"] ??
