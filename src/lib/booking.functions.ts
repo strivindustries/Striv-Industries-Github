@@ -14,25 +14,31 @@ const bookingSchema = z.object({
 });
 
 function createAuthenticatedSupabaseClient() {
-  const url =
+  const request = getRequest() as Request & {
+  runtime?: {
+    cloudflare?: {
+      env?: Record<string, string | undefined>;
+    };
+  };
+};
+
+const env = request.runtime?.cloudflare?.env;
+
+const url =
+  env?.SUPABASE_URL ??
+  env?.VITE_SUPABASE_URL ??
   process.env["SUPABASE_URL"] ??
   process.env["VITE_SUPABASE_URL"];
 
 const key =
+  env?.SUPABASE_PUBLISHABLE_KEY ??
+  env?.VITE_SUPABASE_PUBLISHABLE_KEY ??
   process.env["SUPABASE_PUBLISHABLE_KEY"] ??
   process.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
 
   if (!url || !key) {
     throw new Error("La conexión con la base de datos no está configurada.");
   }
-
-  const request = getRequest();
-  const authorization = request?.headers.get("authorization");
-
-  console.log(
-  "☁️ Cloudflare runtime:",
-  (request as any).runtime?.cloudflare
-);
 
   if (!authorization) {
     throw new Error(
