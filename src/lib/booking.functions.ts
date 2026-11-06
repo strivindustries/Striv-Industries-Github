@@ -23,28 +23,29 @@ function createAuthenticatedSupabaseClient() {
 };
 
 const env = request.runtime?.cloudflare?.env;
+const authorization = request.headers.get("authorization");
 
 const url =
-  env?.SUPABASE_URL ??
-  env?.VITE_SUPABASE_URL ??
+  env?.["SUPABASE_URL"] ??
+  env?.["VITE_SUPABASE_URL"] ??
   process.env["SUPABASE_URL"] ??
   process.env["VITE_SUPABASE_URL"];
-
+  
 const key =
-  env?.SUPABASE_PUBLISHABLE_KEY ??
-  env?.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  env?.["SUPABASE_PUBLISHABLE_KEY"] ??
+  env?.["VITE_SUPABASE_PUBLISHABLE_KEY"] ??
   process.env["SUPABASE_PUBLISHABLE_KEY"] ??
   process.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
 
-  if (!url || !key) {
-    throw new Error("La conexión con la base de datos no está configurada.");
-  }
+if (!url || !key) {
+  throw new Error("La conexión con la base de datos no está configurada.");
+}
 
-  if (!authorization) {
-    throw new Error(
-      "No se encontró la sesión. Recarga la página e intenta nuevamente."
-    );
-  }
+if (!authorization) {
+  throw new Error(
+    "No se encontró la sesión. Recarga la página e intenta nuevamente."
+  );
+}
 
   return createClient(url, key, {
     global: {
