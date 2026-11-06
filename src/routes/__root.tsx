@@ -157,16 +157,29 @@ function RootComponent() {
 
   useEffect(() => {
     void supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
-        const { error } = await supabase.auth.signInAnonymously();
-
-        if (error) {
-          console.error(
-            "Error al iniciar sesión anónima:",
-            error
-          );
-        }
+      if (data.session) {
+        console.log(
+          "✅ Sesión Supabase activa:",
+          data.session.user.id
+        );
+        return;
       }
+
+      const { data: anonymousData, error } =
+        await supabase.auth.signInAnonymously();
+
+      if (error) {
+        console.error(
+          "❌ Error al iniciar sesión anónima:",
+          error
+        );
+        return;
+      }
+
+      console.log(
+        "✅ Sesión anónima creada:",
+        anonymousData.user?.id
+      );
     });
   }, []);
 
