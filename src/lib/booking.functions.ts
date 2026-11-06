@@ -21,13 +21,18 @@ function createAuthenticatedSupabaseClient() {
 const key =
   process.env["SUPABASE_PUBLISHABLE_KEY"] ??
   process.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
-  
+
   if (!url || !key) {
     throw new Error("La conexión con la base de datos no está configurada.");
   }
 
   const request = getRequest();
   const authorization = request?.headers.get("authorization");
+
+  console.log(
+  "☁️ Cloudflare runtime:",
+  (request as any).runtime?.cloudflare
+);
 
   if (!authorization) {
     throw new Error(
